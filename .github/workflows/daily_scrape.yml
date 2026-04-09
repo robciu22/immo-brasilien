@@ -1,0 +1,41 @@
+name: Täglicher Immobilien-Scrape
+
+on:
+  schedule:
+    - cron: '0 6 * * *'   # Täglich 06:00 UTC = 07:00 MEZ = 03:00 Brasilien
+  workflow_dispatch:        # Manueller Start über GitHub UI möglich
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Code auschecken
+        uses: actions/checkout@v4
+
+      - name: Python einrichten
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Dependencies installieren
+        run: pip install -r requirements.txt
+
+      - name: Playwright Browser installieren
+        run: playwright install chromium --with-deps
+
+      - name: Virtual Display starten (für headless=False)
+        run: |
+          sudo apt-get install -y xvfb
+          Xvfb :99 -screen 0 1280x720x24 &
+          echo "DISPLAY=:99" >> $GITHUB_ENV
+
+      - name: Spider ausführen + Supabase Upload
+        run: python -m scrapers.run_all
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DISPLAY: ':99'
