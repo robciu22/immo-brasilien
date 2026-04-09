@@ -12,10 +12,10 @@ jobs:
 
     steps:
       - name: Code auschecken
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.2
 
       - name: Python einrichten
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v5.4.0
         with:
           python-version: '3.12'
           cache: 'pip'

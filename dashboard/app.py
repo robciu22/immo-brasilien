@@ -113,13 +113,8 @@ col4.metric("Ø Distanz Meer", f"{df['distanz_meer_km'].mean():.1f} km" if not d
 
 st.divider()
 
-# ── Karte ──────────────────────────────────────────────────────────────────────
+# ── Hilfsfunktionen ───────────────────────────────────────────────────────────
 
-st.subheader("📍 Karte")
-
-karte = folium.Map(location=[-15.0, -45.0], zoom_start=4)
-
-# Farbskala nach Preis
 def farbe(preis_eur):
     if preis_eur < 50_000:
         return "green"
@@ -128,40 +123,53 @@ def farbe(preis_eur):
     else:
         return "red"
 
-df_mit_coords = df.dropna(subset=["lat", "lng"])
-for _, row in df_mit_coords.iterrows():
-    popup_text = (
-        f"<b>{row['stadt'].title()}</b><br>"
-        f"R$ {row['preis_brl']:,.0f} (~{row['preis_eur']:,.0f} €)<br>"
-        f"{row['zimmer']:.0f} Zimmer | {row['flaeche_m2'] or '?'} m²<br>"
-        f"🌊 {row['distanz_meer_km']:.1f} km zum Meer<br>"
-        f"<a href='{row['url']}' target='_blank'>Inserat öffnen →</a>"
-    )
-    folium.CircleMarker(
-        location=[row["lat"], row["lng"]],
-        radius=7,
-        color=farbe(row["preis_eur"]),
-        fill=True,
-        fill_opacity=0.8,
-        popup=folium.Popup(popup_text, max_width=250),
-        tooltip=f"R$ {row['preis_brl']:,.0f} | {row['stadt']}",
-    ).add_to(karte)
 
-st_folium(karte, width=None, height=450, returned_objects=[])
+def baue_karte(daten: pd.DataFrame, zoom: int = 4, center=None, popup_offen_id=None):
+    """Baut eine Folium-Karte. Falls popup_offen_id gesetzt, wird dieser Marker hervorgehoben."""
+    mittelpunkt = center if center else [-15.0, -45.0]
+    karte = folium.Map(location=mittelpunkt, zoom_start=zoom)
 
-st.caption("🟢 < 50k€  🟠 50–100k€  🔴 > 100k€")
+    for _, row in daten.dropna(subset=["lat", "lng"]).iterrows():
+        popup_text = (
+            f"<b>{row['stadt'].title()}</b><br>"
+            f"R$ {row['preis_brl']:,.0f} (~{row['preis_eur']:,.0f} €)<br>"
+            f"{int(row['zimmer']) if pd.notna(row['zimmer']) else '?'} Zimmer"
+            f" | {int(row['flaeche_m2']) if pd.notna(row['flaeche_m2']) else '?'} m²<br>"
+            f"🌊 {row['distanz_meer_km']:.1f} km zum Meer<br>"
+            f"<a href='{row['url']}' target='_blank'>Inserat öffnen →</a>"
+        )
+        ist_ausgewaehlt = (popup_offen_id is not None and row.get("id") == popup_offen_id)
+        folium.CircleMarker(
+            location=[row["lat"], row["lng"]],
+            radius=12 if ist_ausgewaehlt else 7,
+            color="blue" if ist_ausgewaehlt else farbe(row["preis_eur"]),
+            fill=True,
+            fill_opacity=0.95 if ist_ausgewaehlt else 0.8,
+            popup=folium.Popup(popup_text, max_width=250),
+            tooltip=f"R$ {row['preis_brl']:,.0f} | {row['stadt']}",
+        ).add_to(karte)
 
-st.divider()
+    return karte
+
+
+# ── Session State für Zeilenauswahl ───────────────────────────────────────────
+
+if "ausgewaehlte_zeile" not in st.session_state:
+    st.session_state.ausgewaehlte_zeile = None
 
 # ── Tabelle ────────────────────────────────────────────────────────────────────
 
 st.subheader("📋 Inserate")
+st.caption("Zeile anklicken → Karte springt auf das Objekt")
+
+ausgewaehltes_inserat = None
 
 if df.empty:
     st.info("Keine Inserate mit diesen Filtereinstellungen.")
 else:
-    # Spalten für Anzeige aufbereiten
-    anzeige = df[[
+    df_anzeige = df.reset_index(drop=True)
+
+    anzeige = df_anzeige[[
         "stadt", "preis_brl", "preis_eur", "zimmer",
         "flaeche_m2", "distanz_meer_km", "eigentumsform",
         "nebenkosten_info", "erstmals_gesehen", "url"
@@ -179,14 +187,45 @@ else:
     anzeige["Distanz Meer km"] = anzeige["Distanz Meer km"].apply(lambda x: f"{x:.1f}" if pd.notna(x) else "–")
     anzeige["Stadt"] = anzeige["Stadt"].str.title()
 
-    st.dataframe(
+    auswahl = st.dataframe(
         anzeige,
         use_container_width=True,
         column_config={
             "URL": st.column_config.LinkColumn("Link", display_text="Öffnen →")
         },
         hide_index=True,
+        on_select="rerun",
+        selection_mode="single-row",
     )
+
+    ausgewaehlte_indices = auswahl.selection.rows
+    if ausgewaehlte_indices:
+        ausgewaehltes_inserat = df_anzeige.iloc[ausgewaehlte_indices[0]]
+
+st.divider()
+
+# ── Karte ──────────────────────────────────────────────────────────────────────
+
+if ausgewaehltes_inserat is not None and pd.notna(ausgewaehltes_inserat.get("lat")):
+    # Detail-Ansicht: Karte zentriert auf ausgewähltes Inserat
+    st.subheader(f"📍 {ausgewaehltes_inserat['stadt'].title()} — ausgewähltes Objekt")
+    detail_karte = baue_karte(
+        df,
+        zoom=14,
+        center=[ausgewaehltes_inserat["lat"], ausgewaehltes_inserat["lng"]],
+        popup_offen_id=ausgewaehltes_inserat.get("id"),
+    )
+    st_folium(detail_karte, width=None, height=450, returned_objects=[], key="detail_karte")
+    if st.button("← Alle Inserate anzeigen"):
+        st.session_state.ausgewaehlte_zeile = None
+        st.rerun()
+else:
+    # Übersichtskarte
+    st.subheader("📍 Übersichtskarte")
+    uebersicht = baue_karte(df)
+    st_folium(uebersicht, width=None, height=450, returned_objects=[], key="uebersicht_karte")
+
+st.caption("🟢 < 50k€  🟠 50–100k€  🔴 > 100k€  🔵 Ausgewählt")
 
 # ── Footer ─────────────────────────────────────────────────────────────────────
 
