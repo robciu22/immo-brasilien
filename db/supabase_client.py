@@ -21,6 +21,25 @@ def upsert_inserate(inserate: list[dict]) -> dict:
     return result
 
 
+def lade_neue_inserate_von_heute(datum: str) -> list[dict]:
+    """Gibt alle Inserate zurück, die heute erstmals gesehen wurden."""
+    client = get_client()
+    result = (
+        client.table("inserate")
+        .select("*")
+        .eq("erstmals_gesehen", datum)
+        .execute()
+    )
+    return result.data
+
+
+def zaehle_alle_inserate() -> int:
+    """Gibt die Gesamtanzahl aller Inserate in der Datenbank zurück."""
+    client = get_client()
+    result = client.table("inserate").select("id", count="exact").execute()
+    return result.count or 0
+
+
 def lade_alle_inserate(max_preis_eur: float = 150000, max_distanz_meer: float = 50) -> list[dict]:
     """Inserate für Dashboard laden."""
     client = get_client()
