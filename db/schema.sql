@@ -16,8 +16,9 @@ CREATE TABLE inserate (
   lat               NUMERIC,
   lng               NUMERIC,
   distanz_meer_km   NUMERIC,
-  eigentumsform     TEXT,                 -- 'escritura', 'posse', 'unbekannt'
+  eigentumsform     TEXT,                 -- 'casa', 'apartamento', 'unbekannt'
   zustand           TEXT,                 -- 'neuwertig', 'gut', 'renovierungsbeduerftig', 'unbekannt'
+  ist_condominio    BOOLEAN DEFAULT FALSE,
   nebenkosten_info  TEXT,
   beschreibung      TEXT,
   bilder            JSONB DEFAULT '[]',

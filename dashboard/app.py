@@ -89,6 +89,9 @@ form_auswahl = st.sidebar.multiselect(
     default=eigentumsformen,
 )
 
+# Condominio
+nur_condominio = st.sidebar.checkbox("Nur Condominio-Objekte", value=False)
+
 # ── Daten filtern ──────────────────────────────────────────────────────────────
 
 df = df_alle.copy()
@@ -99,6 +102,8 @@ if staedte_auswahl:
     df = df[df["stadt"].isin(staedte_auswahl)]
 if form_auswahl:
     df = df[df["eigentumsform"].isin(form_auswahl)]
+if nur_condominio and "ist_condominio" in df.columns:
+    df = df[df["ist_condominio"] == True]
 
 # ── Header ─────────────────────────────────────────────────────────────────────
 
@@ -169,17 +174,20 @@ if df.empty:
 else:
     df_anzeige = df.reset_index(drop=True)
 
-    anzeige = df_anzeige[[
-        "stadt", "preis_brl", "preis_eur", "zimmer",
-        "flaeche_m2", "distanz_meer_km", "eigentumsform",
-        "nebenkosten_info", "erstmals_gesehen", "url"
-    ]].copy()
+    basis_spalten = ["stadt", "preis_brl", "preis_eur", "zimmer",
+                     "flaeche_m2", "distanz_meer_km", "eigentumsform"]
+    if "ist_condominio" in df_anzeige.columns:
+        basis_spalten.append("ist_condominio")
+    basis_spalten += ["nebenkosten_info", "erstmals_gesehen", "url"]
 
-    anzeige.columns = [
-        "Stadt", "Preis BRL", "Preis EUR", "Zimmer",
-        "Fläche m²", "Distanz Meer km", "Eigentumsform",
-        "Nebenkosten", "Erstmals gesehen", "URL"
-    ]
+    anzeige = df_anzeige[basis_spalten].copy()
+
+    spalten_namen = ["Stadt", "Preis BRL", "Preis EUR", "Zimmer",
+                     "Fläche m²", "Distanz Meer km", "Eigentumsform"]
+    if "ist_condominio" in df_anzeige.columns:
+        spalten_namen.append("Condominio")
+    spalten_namen += ["Nebenkosten", "Erstmals gesehen", "URL"]
+    anzeige.columns = spalten_namen
 
     anzeige["Preis BRL"] = anzeige["Preis BRL"].apply(lambda x: f"R$ {x:,.0f}" if pd.notna(x) else "–")
     anzeige["Preis EUR"] = anzeige["Preis EUR"].apply(lambda x: f"{x:,.0f} €" if pd.notna(x) else "–")
