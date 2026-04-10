@@ -56,8 +56,8 @@ if df_alle.empty:
 preis_min, preis_max = st.sidebar.slider(
     "Preis (€)",
     min_value=0,
-    max_value=150_000,
-    value=(0, 150_000),
+    max_value=250_000,
+    value=(0, 250_000),
     step=5_000,
     format="%d €",
 )
@@ -103,7 +103,7 @@ if form_auswahl:
 # ── Header ─────────────────────────────────────────────────────────────────────
 
 st.title("🏖️ Immobiliensuche Brasilien")
-st.caption(f"Kaufobjekte bis 150.000 € in touristischen Küstenregionen")
+st.caption(f"Kaufobjekte bis 250.000 € in touristischen Küstenregionen")
 
 col1, col2, col3, col4 = st.columns(4)
 col1.metric("Inserate gefunden", len(df))
