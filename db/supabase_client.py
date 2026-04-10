@@ -12,10 +12,19 @@ def get_client() -> Client:
 
 def upsert_inserate(inserate: list[dict]) -> dict:
     """Inserate in Supabase schreiben. Duplikate werden per hash-Konflikt übersprungen."""
+    # Deduplizieren innerhalb des Batches (gleicher Hash darf nur einmal vorkommen)
+    seen = set()
+    unique = []
+    for ins in inserate:
+        h = ins.get("hash")
+        if h not in seen:
+            seen.add(h)
+            unique.append(ins)
+
     client = get_client()
     result = (
         client.table("inserate")
-        .upsert(inserate, on_conflict="hash")
+        .upsert(unique, on_conflict="hash")
         .execute()
     )
     return result
