@@ -48,16 +48,19 @@ def sende_nachricht(text: str) -> bool:
         return False
 
 
-def sende_scrape_zusammenfassung(neue_inserate: list[dict], gesamt_inserate: int) -> bool:
+def sende_scrape_zusammenfassung(neue_inserate: list[dict], gesamt_inserate: int, deaktiviert: int = 0) -> bool:
     """
     Sendet eine kompakte Zusammenfassung nach dem täglichen Scrape.
     Schickt bis zu 5 Einzel-Listings der günstigsten neuen Inserate.
     """
+    deaktiviert_str = f"\n🗑 Deaktiviert (>14 Tage): {deaktiviert}" if deaktiviert > 0 else ""
+
     if not neue_inserate:
         text = (
             "🏠 <b>Immo Brasilien — Täglicher Run</b>\n\n"
             f"Keine neuen Inserate heute.\n"
-            f"Gesamt in Datenbank: {gesamt_inserate}"
+            f"Gesamt aktiv in DB: {gesamt_inserate}"
+            f"{deaktiviert_str}"
         )
         return sende_nachricht(text)
 
@@ -96,7 +99,7 @@ def sende_scrape_zusammenfassung(neue_inserate: list[dict], gesamt_inserate: int
     text = (
         f"🏠 <b>Immo Brasilien — {anzahl} neue Inserate!</b>\n\n"
         f"{listings_text}\n\n"
-        f"<i>Gesamt in DB: {gesamt_inserate}</i>"
+        f"<i>Gesamt aktiv in DB: {gesamt_inserate}{deaktiviert_str}</i>"
     )
 
     return sende_nachricht(text)

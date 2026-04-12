@@ -19,6 +19,7 @@ CREATE TABLE inserate (
   eigentumsform     TEXT,                 -- 'casa', 'apartamento', 'unbekannt'
   zustand           TEXT,                 -- 'neuwertig', 'gut', 'renovierungsbeduerftig', 'unbekannt'
   ist_condominio    BOOLEAN DEFAULT FALSE,
+  aktiv             BOOLEAN DEFAULT TRUE,
   nebenkosten_info  TEXT,
   beschreibung      TEXT,
   bilder            JSONB DEFAULT '[]',

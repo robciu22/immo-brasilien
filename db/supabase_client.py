@@ -49,6 +49,24 @@ def zaehle_alle_inserate() -> int:
     return result.count or 0
 
 
+def markiere_inaktive_inserate(tage: int = 14) -> int:
+    """
+    Markiert Inserate als inaktiv, die seit mehr als `tage` Tagen nicht mehr gescraped wurden.
+    Gibt die Anzahl deaktivierter Inserate zurück.
+    """
+    from datetime import date, timedelta
+    client = get_client()
+    grenze = (date.today() - timedelta(days=tage)).isoformat()
+    result = (
+        client.table("inserate")
+        .update({"aktiv": False})
+        .lt("zuletzt_gesehen", grenze)
+        .eq("aktiv", True)
+        .execute()
+    )
+    return len(result.data)
+
+
 def lade_alle_inserate(max_preis_eur: float = 150000, max_distanz_meer: float = 50) -> list[dict]:
     """Inserate für Dashboard laden."""
     client = get_client()

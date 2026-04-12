@@ -21,16 +21,26 @@ PREIS_MAX_BRL = 1_000_000
 
 # Stadt → (region, bundesstaat-kuerzel, vivareal-slug)
 ZIELSTAEDTE = {
-    "fortaleza":          ("nordosten",  "ceara",              "fortaleza"),
-    "natal":              ("nordosten",  "rio-grande-do-norte", "natal"),
-    "recife":             ("nordosten",  "pernambuco",         "recife"),
-    "salvador":           ("nordosten",  "bahia",              "salvador"),
-    "maceio":             ("nordosten",  "alagoas",            "maceio"),
-    "florianopolis":      ("sueden",     "santa-catarina",     "florianopolis"),
-    "balneario-camboriu": ("sueden",     "santa-catarina",     "balneario-camboriu"),
-    "buzios":             ("rio-kueste", "rio-de-janeiro",     "armacao-dos-buzios"),
-    "angra-dos-reis":     ("rio-kueste", "rio-de-janeiro",     "angra-dos-reis"),
-    "paraty":             ("rio-kueste", "rio-de-janeiro",     "paraty"),
+    # Nordosten
+    "fortaleza":          ("nordosten",  "ceara",               "fortaleza"),
+    "natal":              ("nordosten",  "rio-grande-do-norte",  "natal"),
+    "recife":             ("nordosten",  "pernambuco",           "recife"),
+    "salvador":           ("nordosten",  "bahia",                "salvador"),
+    "maceio":             ("nordosten",  "alagoas",              "maceio"),
+    "maragogi":           ("nordosten",  "alagoas",              "maragogi"),
+    "porto-seguro":       ("nordosten",  "bahia",                "porto-seguro"),
+    "itacare":            ("nordosten",  "bahia",                "itacare"),
+    # Süden
+    "florianopolis":      ("sueden",     "santa-catarina",       "florianopolis"),
+    "balneario-camboriu": ("sueden",     "santa-catarina",       "balneario-camboriu"),
+    "guaruja":            ("sueden",     "sao-paulo",            "guaruja"),
+    "santos":             ("sueden",     "sao-paulo",            "santos"),
+    # Rio-Küste
+    "rio-de-janeiro":     ("rio-kueste", "rio-de-janeiro",       "rio-de-janeiro"),
+    "arraial-do-cabo":    ("rio-kueste", "rio-de-janeiro",       "arraial-do-cabo"),
+    "buzios":             ("rio-kueste", "rio-de-janeiro",       "armacao-dos-buzios"),
+    "angra-dos-reis":     ("rio-kueste", "rio-de-janeiro",       "angra-dos-reis"),
+    "paraty":             ("rio-kueste", "rio-de-janeiro",       "paraty"),
 }
 
 # Küstenpunkte für Distanzberechnung (lat, lng)
@@ -110,6 +120,40 @@ KUESTENPUNKTE = [
     (-23.198, -44.674), (-23.206, -44.688), (-23.214, -44.702), (-23.222, -44.715),
     (-23.230, -44.727), (-23.238, -44.737), (-23.244, -44.745), (-23.236, -44.730),
     (-23.226, -44.717), (-23.216, -44.704),
+
+    # Maragogi (AL) — Praia de Maragogi (~8 Punkte)
+    (-9.008, -35.224), (-9.014, -35.218), (-9.020, -35.212), (-9.026, -35.207),
+    (-9.032, -35.202), (-9.038, -35.197), (-9.044, -35.193), (-9.050, -35.189),
+
+    # Porto Seguro (BA) — Orla Norte bis Sul (~10 Punkte)
+    (-16.420, -39.065), (-16.430, -39.062), (-16.440, -39.059), (-16.450, -39.057),
+    (-16.460, -39.055), (-16.470, -39.054), (-16.480, -39.053), (-16.490, -39.052),
+    (-16.500, -39.052), (-16.510, -39.053),
+
+    # Itacaré (BA) — Praias do sul (~8 Punkte)
+    (-14.270, -38.992), (-14.278, -38.987), (-14.286, -38.982), (-14.294, -38.978),
+    (-14.302, -38.974), (-14.310, -38.971), (-14.318, -38.968), (-14.326, -38.966),
+
+    # Guarujá (SP) — Praia da Enseada bis Pitangueiras (~10 Punkte)
+    (-23.970, -46.256), (-23.976, -46.248), (-23.982, -46.240), (-23.988, -46.232),
+    (-23.994, -46.224), (-24.000, -46.218), (-24.006, -46.212), (-24.012, -46.207),
+    (-24.018, -46.203), (-24.024, -46.200),
+
+    # Santos (SP) — Orla da Praia (~10 Punkte)
+    (-23.958, -46.334), (-23.960, -46.322), (-23.962, -46.310), (-23.964, -46.298),
+    (-23.966, -46.286), (-23.968, -46.274), (-23.970, -46.262), (-23.972, -46.250),
+    (-23.974, -46.238), (-23.976, -46.226),
+
+    # Rio de Janeiro (RJ) — Barra da Tijuca bis Recreio (~15 Punkte)
+    (-22.988, -43.365), (-22.990, -43.350), (-22.992, -43.335), (-22.994, -43.320),
+    (-22.996, -43.305), (-22.998, -43.290), (-23.000, -43.275), (-23.002, -43.260),
+    (-23.004, -43.245), (-23.006, -43.230), (-23.008, -43.215), (-23.010, -43.200),
+    # Ipanema / Copacabana
+    (-22.986, -43.195), (-22.984, -43.185), (-22.982, -43.175),
+
+    # Arraial do Cabo (RJ) — Praia Grande / Praia dos Anjos (~8 Punkte)
+    (-22.956, -42.026), (-22.962, -42.020), (-22.968, -42.014), (-22.974, -42.008),
+    (-22.980, -42.002), (-22.986, -41.996), (-22.992, -41.991), (-22.998, -41.987),
 ]
 
 
