@@ -17,7 +17,7 @@ from scrapers.utils import aktueller_kurs_brl_eur
 
 log = logging.getLogger(__name__)
 
-PREIS_MAX_BRL = 1_400_000
+PREIS_MAX_BRL = 2_200_000
 
 # Stadt → (region, bundesstaat-kuerzel, vivareal-slug)
 ZIELSTAEDTE = {
