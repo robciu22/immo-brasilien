@@ -34,6 +34,10 @@ def main():
         log.warning("Keine Inserate gefunden — Abbruch")
         sys.exit(1)
 
+    # Hashes die bereits heute in der DB sind (vor diesem Run)
+    heute_datum = heute()
+    bereits_heute_hashes = {ins["hash"] for ins in lade_neue_inserate_von_heute(heute_datum)}
+
     result = upsert_inserate(inserate)
     log.info(f"Supabase: {len(result.data)} Datensätze geschrieben (Duplikate übersprungen)")
 
@@ -42,11 +46,12 @@ def main():
     if deaktiviert > 0:
         log.info(f"Bereinigung: {deaktiviert} Inserate als inaktiv markiert")
 
-    # Telegram Alert
-    heute_datum = heute()
-    neue = lade_neue_inserate_von_heute(heute_datum)
+    # Telegram Alert: nur Inserate die in DIESEM Run neu dazugekommen sind
+    scraped_hashes = {ins.get("hash") for ins in inserate}
+    alle_heute = lade_neue_inserate_von_heute(heute_datum)
+    neue = [ins for ins in alle_heute if ins["hash"] in scraped_hashes and ins["hash"] not in bereits_heute_hashes]
     gesamt = zaehle_alle_inserate()
-    log.info(f"Neue Inserate heute: {len(neue)} — Gesamt: {gesamt}")
+    log.info(f"Neue Inserate in diesem Run: {len(neue)} — Gesamt: {gesamt}")
     sende_scrape_zusammenfassung(neue, gesamt, deaktiviert)
 
     log.info("=== Run erfolgreich ===")

@@ -1,6 +1,6 @@
 """
 VivaReal Spider — Immobiliensuche Brasilien
-Scrapet Kaufinserate in den 10 Zielstädten (Küstenorte) bis 1.000.000 BRL.
+Scrapet Kaufinserate in den 17 Zielstädten (Küstenorte) bis 1.400.000 BRL (~250.000 €).
 Nutzt Playwright (headless=False) um Cloudflare zu umgehen.
 Daten werden aus eingebettetem Next.js JSON extrahiert.
 """
@@ -17,7 +17,7 @@ from scrapers.utils import aktueller_kurs_brl_eur
 
 log = logging.getLogger(__name__)
 
-PREIS_MAX_BRL = 1_000_000
+PREIS_MAX_BRL = 1_400_000
 
 # Stadt → (region, bundesstaat-kuerzel, vivareal-slug)
 ZIELSTAEDTE = {
