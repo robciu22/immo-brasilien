@@ -1,6 +1,6 @@
 """
 VivaReal Spider — Immobiliensuche Brasilien
-Scrapet Kaufinserate in den 17 Zielstädten (Küstenorte) bis 1.400.000 BRL (~250.000 €).
+Scrapet Kaufinserate in den 20 Zielstädten (Küstenorte) bis 2.200.000 BRL (~375.000 €).
 Nutzt Playwright (headless=False) um Cloudflare zu umgehen.
 Daten werden aus eingebettetem Next.js JSON extrahiert.
 """
@@ -23,7 +23,9 @@ PREIS_MAX_BRL = 2_200_000
 ZIELSTAEDTE = {
     # Nordosten
     "fortaleza":          ("nordosten",  "ceara",               "fortaleza"),
+    "jericoacoara":       ("nordosten",  "ceara",               "jijoca-de-jericoacoara"),
     "natal":              ("nordosten",  "rio-grande-do-norte",  "natal"),
+    "pipa":               ("nordosten",  "rio-grande-do-norte",  "tibau-do-sul"),
     "recife":             ("nordosten",  "pernambuco",           "recife"),
     "salvador":           ("nordosten",  "bahia",                "salvador"),
     "maceio":             ("nordosten",  "alagoas",              "maceio"),
@@ -33,14 +35,15 @@ ZIELSTAEDTE = {
     # Süden
     "florianopolis":      ("sueden",     "santa-catarina",       "florianopolis"),
     "balneario-camboriu": ("sueden",     "santa-catarina",       "balneario-camboriu"),
-    "guaruja":            ("sueden",     "sao-paulo",            "guaruja"),
-    "santos":             ("sueden",     "sao-paulo",            "santos"),
+    "ubatuba":            ("sueden",     "sp",                   "ubatuba"),
+    "guaruja":            ("sueden",     "sp",                   "guaruja"),
+    "santos":             ("sueden",     "sp",                   "santos"),
     # Rio-Küste
-    "rio-de-janeiro":     ("rio-kueste", "rio-de-janeiro",       "rio-de-janeiro"),
-    "arraial-do-cabo":    ("rio-kueste", "rio-de-janeiro",       "arraial-do-cabo"),
-    "buzios":             ("rio-kueste", "rio-de-janeiro",       "armacao-dos-buzios"),
-    "angra-dos-reis":     ("rio-kueste", "rio-de-janeiro",       "angra-dos-reis"),
-    "paraty":             ("rio-kueste", "rio-de-janeiro",       "paraty"),
+    "rio-de-janeiro":     ("rio-kueste", "rj",                   "rio-de-janeiro"),
+    "arraial-do-cabo":    ("rio-kueste", "rj",                   "arraial-do-cabo"),
+    "buzios":             ("rio-kueste", "rj",                   "armacao-dos-buzios"),
+    "angra-dos-reis":     ("rio-kueste", "rj",                   "angra-dos-reis"),
+    "paraty":             ("rio-kueste", "rj",                   "paraty"),
 }
 
 # Küstenpunkte für Distanzberechnung (lat, lng)
@@ -125,6 +128,14 @@ KUESTENPUNKTE = [
     (-9.008, -35.224), (-9.014, -35.218), (-9.020, -35.212), (-9.026, -35.207),
     (-9.032, -35.202), (-9.038, -35.197), (-9.044, -35.193), (-9.050, -35.189),
 
+    # Pipa / Tibau do Sul (RN) — Praia de Pipa (~8 Punkte)
+    (-6.226, -35.046), (-6.230, -35.040), (-6.234, -35.034), (-6.238, -35.028),
+    (-6.242, -35.022), (-6.246, -35.016), (-6.250, -35.010), (-6.254, -35.004),
+
+    # Jericoacoara / Jijoca (CE) — Praia de Jericoacoara (~8 Punkte)
+    (-2.796, -40.512), (-2.798, -40.506), (-2.800, -40.500), (-2.802, -40.494),
+    (-2.804, -40.488), (-2.806, -40.482), (-2.808, -40.476), (-2.810, -40.470),
+
     # Porto Seguro (BA) — Orla Norte bis Sul (~10 Punkte)
     (-16.420, -39.065), (-16.430, -39.062), (-16.440, -39.059), (-16.450, -39.057),
     (-16.460, -39.055), (-16.470, -39.054), (-16.480, -39.053), (-16.490, -39.052),
@@ -133,6 +144,11 @@ KUESTENPUNKTE = [
     # Itacaré (BA) — Praias do sul (~8 Punkte)
     (-14.270, -38.992), (-14.278, -38.987), (-14.286, -38.982), (-14.294, -38.978),
     (-14.302, -38.974), (-14.310, -38.971), (-14.318, -38.968), (-14.326, -38.966),
+
+    # Ubatuba (SP) — Praia Grande bis Itaguá (~10 Punkte)
+    (-23.432, -45.066), (-23.436, -45.072), (-23.440, -45.078), (-23.444, -45.084),
+    (-23.448, -45.090), (-23.452, -45.096), (-23.456, -45.102), (-23.460, -45.108),
+    (-23.464, -45.114), (-23.468, -45.120),
 
     # Guarujá (SP) — Praia da Enseada bis Pitangueiras (~10 Punkte)
     (-23.970, -46.256), (-23.976, -46.248), (-23.982, -46.240), (-23.988, -46.232),
