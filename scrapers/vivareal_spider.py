@@ -268,6 +268,14 @@ def scrape_alle_staedte(max_seiten: int = 3) -> list[dict]:
         )
         page = ctx.new_page()
 
+        # Warm-up: VivaReal-Startseite besuchen damit Cloudflare die Session akzeptiert
+        try:
+            page.goto("https://www.vivareal.com.br/", timeout=15000)
+            page.wait_for_timeout(3000)
+            log.info("Warm-up OK")
+        except Exception:
+            pass
+
         for stadt_key, (region, bundesstaat, slug) in ZIELSTAEDTE.items():
             log.info(f"Scrape Stadt: {stadt_key}")
 
