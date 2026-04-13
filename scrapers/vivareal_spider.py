@@ -273,7 +273,9 @@ def scrape_alle_staedte(max_seiten: int = 3) -> list[dict]:
 
                 listings = parse_listings_aus_html(html)
                 if not listings:
-                    log.info(f"  Keine Inserate mehr auf Seite {seite} — stoppe für {stadt_key}")
+                    # Diagnose: ersten 300 Zeichen der Seite loggen
+                    snippet = html[:300].replace("\n", " ").strip()
+                    log.warning(f"  0 Inserate auf Seite {seite} für {stadt_key} | HTML-Anfang: {snippet}")
                     break
 
                 log.info(f"  Seite {seite}: {len(listings)} Inserate")
