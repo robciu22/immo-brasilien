@@ -26,10 +26,22 @@ def get_supabase():
     return create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
 
 
+SPALTEN = (
+    "id,quelle,titel,preis_brl,preis_eur,flaeche_m2,zimmer,"
+    "stadt,region,lat,lng,distanz_meer_km,eigentumsform,zustand,"
+    "ist_condominio,nebenkosten_info,erstmals_gesehen,url"
+)
+
+
 @st.cache_data(ttl=3600)
 def lade_inserate() -> pd.DataFrame:
     client = get_supabase()
-    result = client.table("inserate").select("*").execute()
+    result = (
+        client.table("inserate")
+        .select(SPALTEN)
+        .eq("aktiv", True)
+        .execute()
+    )
     df = pd.DataFrame(result.data)
     if df.empty:
         return df
@@ -129,12 +141,19 @@ def farbe(preis_eur):
         return "red"
 
 
+MAX_KARTEN_MARKER = 500
+
+
 def baue_karte(daten: pd.DataFrame, zoom: int = 4, center=None, popup_offen_id=None):
     """Baut eine Folium-Karte. Falls popup_offen_id gesetzt, wird dieser Marker hervorgehoben."""
     mittelpunkt = center if center else [-15.0, -45.0]
     karte = folium.Map(location=mittelpunkt, zoom_start=zoom)
 
-    for _, row in daten.dropna(subset=["lat", "lng"]).iterrows():
+    karten_daten = daten.dropna(subset=["lat", "lng"])
+    if len(karten_daten) > MAX_KARTEN_MARKER:
+        karten_daten = karten_daten.nsmallest(MAX_KARTEN_MARKER, "preis_eur")
+
+    for _, row in karten_daten.iterrows():
         popup_text = (
             f"<b>{row['stadt'].title()}</b><br>"
             f"R$ {row['preis_brl']:,.0f} (~{row['preis_eur']:,.0f} €)<br>"
@@ -230,6 +249,9 @@ if ausgewaehltes_inserat is not None and pd.notna(ausgewaehltes_inserat.get("lat
 else:
     # Übersichtskarte
     st.subheader("📍 Übersichtskarte")
+    karten_count = df.dropna(subset=["lat", "lng"])
+    if len(karten_count) > MAX_KARTEN_MARKER:
+        st.caption(f"Karte zeigt die {MAX_KARTEN_MARKER} günstigsten von {len(karten_count)} Inseraten. Filter anwenden für vollständige Ansicht.")
     uebersicht = baue_karte(df)
     st_folium(uebersicht, width=None, height=450, returned_objects=[], key="uebersicht_karte")
 
