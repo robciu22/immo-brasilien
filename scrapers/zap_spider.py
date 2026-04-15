@@ -8,6 +8,7 @@ Daten werden über window.__NEXT_DATA__ ausgelesen (Next.js globale Variable nac
 import time
 import hashlib
 import logging
+import requests
 from datetime import date
 from playwright.sync_api import sync_playwright
 
@@ -396,6 +397,50 @@ def _extrahiere_listings_aus_api_responses(api_responses: list[dict]) -> list[di
     return alle
 
 
+def _scrape_stadt_via_api(
+    bundesstaat: str,
+    slug: str,
+    seite: int,
+    session: requests.Session,
+) -> list[dict]:
+    """
+    Direkte Anfrage an glue-api.zapimoveis.com.br — stadtgefiltert.
+    Gibt api_responses-kompatible Einträge zurück (für _extrahiere_listings_aus_api_responses).
+    """
+    api_url = "https://glue-api.zapimoveis.com.br/v2/listings"
+    offset = (seite - 1) * 24
+    params = {
+        "unitTypes":    "APARTMENT,HOME",
+        "listingType":  "USED",
+        "businessType": "SALE",
+        "stateSlug":    bundesstaat,
+        "citySlug":     slug,
+        "categoryPage": "1",
+        "size":         "24",
+        "from":         str(offset),
+        "portal":       "ZAP",
+        "priceMax":     str(PREIS_MAX_BRL),
+    }
+    headers = {
+        "Accept":   "application/json",
+        "X-Domain": "www.zapimoveis.com.br",
+        "Origin":   "https://www.zapimoveis.com.br",
+        "Referer":  f"https://www.zapimoveis.com.br/venda/{bundesstaat}/{slug}/",
+    }
+    try:
+        resp = session.get(api_url, params=params, headers=headers, timeout=15)
+        if resp.status_code != 200:
+            log.debug(f"  ZAP direkte API {bundesstaat}/{slug} S{seite}: HTTP {resp.status_code}")
+            return []
+        body = resp.text
+        if not body or "listings" not in body:
+            return []
+        return [{"url": api_url, "body": body, "ct": "application/json"}]
+    except Exception as e:
+        log.debug(f"  ZAP direkte API Fehler {bundesstaat}/{slug} S{seite}: {e}")
+        return []
+
+
 def scrape_alle_staedte(max_seiten: int = 3) -> list[dict]:
     """
     Scrapet alle 20 Zielstädte auf ZAP Imóveis, bis zu max_seiten pro Stadt.
@@ -405,6 +450,17 @@ def scrape_alle_staedte(max_seiten: int = 3) -> list[dict]:
     log.info(f"ZAP — Wechselkurs BRL→EUR: {kurs:.4f}")
 
     alle_inserate = []
+
+    # Direkte API-Session (primäre Methode — stadtgefiltert, kein Browser nötig)
+    api_session = requests.Session()
+    api_session.headers.update({
+        "User-Agent": (
+            "Mozilla/5.0 (X11; Linux x86_64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36"
+        ),
+        "Accept-Language": "pt-BR,pt;q=0.9",
+    })
 
     with sync_playwright() as p:
         browser = p.chromium.launch(
@@ -433,64 +489,66 @@ def scrape_alle_staedte(max_seiten: int = 3) -> list[dict]:
             log.info(f"ZAP Scrape Stadt: {stadt_key}")
 
             for seite in range(1, max_seiten + 1):
-                url = (
-                    f"https://www.zapimoveis.com.br/venda/{bundesstaat}/{slug}/"
-                    f"?tipo=residencial_apartamento,residencial_casa"
-                    f"&preco__lte={PREIS_MAX_BRL}"
-                    f"&pagina={seite}"
-                )
+                listings = []
 
-                # Fange JSON-API-Antworten während des Seitenladens ab
-                api_responses: list[dict] = []
+                # 1) Direkte glue-api-Anfrage (primär — stadtgefiltert)
+                direct = _scrape_stadt_via_api(bundesstaat, slug, seite, api_session)
+                if direct:
+                    listings = _extrahiere_listings_aus_api_responses(direct)
+                    if listings:
+                        log.info(f"  Seite {seite} (API direkt): {len(listings)} Inserate")
 
-                def _on_response(response, _store=api_responses):
-                    if response.status != 200:
-                        return
-                    r_url = response.url
-                    is_glue = "glue-api" in r_url
-                    is_zap  = "zapimoveis" in r_url or "olx" in r_url
-                    if not (is_glue or is_zap):
-                        return
-                    ct = response.headers.get("content-type", "")
-                    # glue-api: immer erfassen (kann auch text/plain o.ä. sein)
-                    # zapimoveis.com.br: JSON + RSC-Stream (text/x-component)
-                    if not is_glue and "json" not in ct and "x-component" not in ct:
-                        return
-                    try:
-                        body = response.body().decode("utf-8", errors="ignore")
-                        if body:
-                            _store.append({"url": r_url, "body": body, "ct": ct})
-                    except Exception:
-                        pass
-
-                page.on("response", _on_response)
-                try:
-                    page.goto(url, timeout=30000)
-                    page.wait_for_timeout(4000 + seite * 500)
-                    html = page.content()
-                except Exception as e:
-                    log.warning(f"Fehler bei {stadt_key} Seite {seite}: {e}")
-                    page.remove_listener("response", _on_response)
-                    break
-                finally:
-                    page.remove_listener("response", _on_response)
-
-                # 1) HTML-Parsing (wie VivaReal-Spider — zuverlässiger als API-Interception)
-                listings = parse_listings_aus_html(html)
-
-                # 2) Fallback: abgefangene API-Responses
+                # 2) Browser-Fallback (wenn direkte API nichts liefert)
                 if not listings:
-                    listings = _extrahiere_listings_aus_api_responses(api_responses)
+                    browser_url = (
+                        f"https://www.zapimoveis.com.br/venda/{bundesstaat}/{slug}/"
+                        f"?tipo=residencial_apartamento,residencial_casa"
+                        f"&preco__lte={PREIS_MAX_BRL}"
+                        f"&pagina={seite}"
+                    )
+
+                    api_responses: list[dict] = []
+
+                    def _on_response(response, _store=api_responses):
+                        if response.status != 200:
+                            return
+                        r_url = response.url
+                        is_glue = "glue-api" in r_url
+                        is_zap  = "zapimoveis" in r_url or "olx" in r_url
+                        if not (is_glue or is_zap):
+                            return
+                        ct = response.headers.get("content-type", "")
+                        if not is_glue and "json" not in ct and "x-component" not in ct:
+                            return
+                        try:
+                            body = response.body().decode("utf-8", errors="ignore")
+                            if body:
+                                _store.append({"url": r_url, "body": body, "ct": ct})
+                        except Exception:
+                            pass
+
+                    page.on("response", _on_response)
+                    try:
+                        page.goto(browser_url, timeout=30000)
+                        page.wait_for_timeout(4000 + seite * 500)
+                        html = page.content()
+                    except Exception as e:
+                        log.warning(f"Fehler bei {stadt_key} Seite {seite}: {e}")
+                        page.remove_listener("response", _on_response)
+                        break
+                    finally:
+                        page.remove_listener("response", _on_response)
+
+                    listings = parse_listings_aus_html(html)
+                    if not listings:
+                        listings = _extrahiere_listings_aus_api_responses(api_responses)
+                    if listings:
+                        log.info(f"  Seite {seite} (Browser-Fallback): {len(listings)} Inserate")
 
                 if not listings:
                     if seite == 1:
-                        log.warning(
-                            f"  ZAP keine Inserate für {stadt_key} | "
-                            f"HTML-Snippet: {html[:300]!r}"
-                        )
+                        log.warning(f"  ZAP keine Inserate für {stadt_key} (API + Browser ohne Ergebnis)")
                     break
-
-                log.info(f"  Seite {seite}: {len(listings)} Inserate")
 
                 for l in listings:
                     inserat = {
