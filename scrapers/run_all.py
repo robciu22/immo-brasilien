@@ -1,8 +1,9 @@
 """
 Einstiegspunkt für GitHub Actions:
 1. VivaReal Spider ausführen
-2. Inserate in Supabase schreiben
-3. Ergebnis loggen
+2. ZAP Imóveis Spider ausführen
+3. Inserate in Supabase schreiben
+4. Ergebnis loggen
 """
 
 import logging
@@ -21,14 +22,21 @@ log = logging.getLogger(__name__)
 
 
 def main():
-    from scrapers.vivareal_spider import scrape_alle_staedte, heute
+    from scrapers.vivareal_spider import scrape_alle_staedte as vivareal_scrape, heute
+    from scrapers.zap_spider import scrape_alle_staedte as zap_scrape
     from db.supabase_client import upsert_inserate, lade_neue_inserate_von_heute, zaehle_alle_inserate, markiere_inaktive_inserate
     from notifications.telegram_bot import sende_scrape_zusammenfassung
 
     log.info("=== Immobiliensuche Brasilien — Täglicher Run ===")
 
-    inserate = scrape_alle_staedte(max_seiten=3)
-    log.info(f"Spider fertig: {len(inserate)} Inserate gesammelt")
+    inserate_vivareal = vivareal_scrape(max_seiten=3)
+    log.info(f"VivaReal Spider fertig: {len(inserate_vivareal)} Inserate")
+
+    inserate_zap = zap_scrape(max_seiten=3)
+    log.info(f"ZAP Spider fertig: {len(inserate_zap)} Inserate")
+
+    inserate = inserate_vivareal + inserate_zap
+    log.info(f"Gesamt gesammelt: {len(inserate)} Inserate (beide Portale)")
 
     if not inserate:
         log.warning("Keine Inserate gefunden — Abbruch")
