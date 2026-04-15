@@ -10,11 +10,29 @@ ermöglicht einen täglichen automatischen Run direkt von der Mobilfunk-IP.
 
 ## 1. Termux installieren
 
-**Wichtig:** Termux über **F-Droid** installieren, nicht über den Google Play Store
-(die Play-Store-Version wird nicht mehr gepflegt).
+### Empfohlene Apps (in dieser Reihenfolge installieren)
 
-- F-Droid App: https://f-droid.org
-- Termux in F-Droid suchen und installieren
+| App | Zweck | Pflicht? |
+|---|---|---|
+| **Termux** | Terminal + Python-Umgebung | Ja |
+| **Termux:Boot** | Startet crond automatisch nach Neustart | Empfohlen |
+| **Termux:Widget** | Skripte per Homescreen-Widget starten | Optional |
+
+### Installationsquelle
+
+**Option A — F-Droid** (aktuell empfohlen):
+- F-Droid installieren (f-droid.org → „Download F-Droid")
+- In F-Droid nach **„Termux"** suchen — Entwickler: **„Termux Dev Team"**
+- Paket-ID zur Kontrolle: `com.termux`
+- Ebenso **„Termux:Boot"** (com.termux.boot) installieren
+
+> **Hinweis:** Google plant ab September 2026 Einschränkungen für APK-Sideloading,
+> die F-Droid betreffen könnten. Falls F-Droid nicht mehr funktioniert:
+
+**Option B — Direkt von GitHub** (funktioniert auch ohne F-Droid):
+- Termux APK-Releases: github.com/termux/termux-app/releases
+- Neueste `termux-app_v*.apk` (arm64-v8a für moderne Android-Geräte) herunterladen
+- Manuell installieren (ADB oder direkt auf dem Telefon)
 
 ---
 
@@ -98,10 +116,22 @@ Datacenter-IP-Range hat (selten, aber möglich). In dem Fall auf Mobilfunk wechs
 
 ## 7. Täglichen Cronjob einrichten
 
-```bash
-# crond-Daemon beim Termux-Start automatisch starten
-echo "crond" >> ~/.bashrc
+### Automatischer Start nach Neustart (Termux:Boot)
 
+Damit crond nach jedem Telefonstart automatisch läuft:
+
+```bash
+mkdir -p ~/.termux/boot
+echo "crond" > ~/.termux/boot/start-crond.sh
+chmod +x ~/.termux/boot/start-crond.sh
+```
+
+> Termux:Boot muss einmalig geöffnet worden sein, damit es sich als Boot-Handler
+> registriert. Danach reicht die obige Datei.
+
+### Cronjob anlegen
+
+```bash
 # Cronjob anlegen (täglich 10:00 Uhr)
 crontab -e
 ```
@@ -114,7 +144,7 @@ Im Editor folgenden Eintrag hinzufügen:
 
 Speichern: `Strg+X` → `Y` → `Enter`
 
-crond starten:
+crond manuell starten (einmalig nach Einrichtung):
 ```bash
 crond
 ```
