@@ -2,7 +2,7 @@
 ZAP Imóveis Spider — Immobiliensuche Brasilien
 Scrapet Kaufinserate in den 20 Zielstädten (Küstenorte) bis 2.200.000 BRL (~375.000 €).
 Nutzt Playwright (headless=False) um Bot-Erkennung zu umgehen.
-Daten werden aus dem eingebetteten Next.js __NEXT_DATA__ JSON extrahiert.
+Daten werden über window.__NEXT_DATA__ ausgelesen (Next.js globale Variable nach Hydration).
 """
 
 import time
@@ -10,7 +10,6 @@ import hashlib
 import logging
 from datetime import date
 from playwright.sync_api import sync_playwright
-from bs4 import BeautifulSoup
 
 from scrapers.utils import aktueller_kurs_brl_eur
 from scrapers.vivareal_spider import (
@@ -77,27 +76,12 @@ def _tiefe_suche(obj, key: str):
     return None
 
 
-def parse_listings_aus_html(html: str) -> list[dict]:
-    """Extrahiert Inserate aus dem eingebetteten Next.js __NEXT_DATA__ JSON."""
-    import json
-
-    soup = BeautifulSoup(html, "html.parser")
-    tag = soup.find("script", {"id": "__NEXT_DATA__"})
-    if not tag or not tag.string:
-        return []
-
-    try:
-        data = json.loads(tag.string)
-    except json.JSONDecodeError as e:
-        log.warning(f"ZAP __NEXT_DATA__ JSON-Fehler: {e}")
-        return []
-
-    # Bekannte Pfade für ZAP-Listings (OLX Brasil Backend)
+def parse_listings_aus_next_data(data: dict) -> list[dict]:
+    """Extrahiert Inserate aus dem window.__NEXT_DATA__ JSON-Objekt."""
     listings_raw = None
     page_props = data.get("props", {}).get("pageProps", {})
 
     for pfad in [
-        # Standardpfade ZAP
         lambda pp: pp.get("initialState", {}).get("search", {}).get("result", {}).get("listings"),
         lambda pp: pp.get("initialData", {}).get("search", {}).get("result", {}).get("listings"),
         lambda pp: pp.get("serverData", {}).get("search", {}).get("result", {}).get("listings"),
@@ -117,16 +101,15 @@ def parse_listings_aus_html(html: str) -> list[dict]:
         listings_raw = _tiefe_suche(data, "listings")
 
     if listings_raw is None:
-        # Struktur loggen damit wir den richtigen Pfad finden
         top_keys = list(page_props.keys()) if page_props else list(data.keys())
-        log.warning(f"ZAP __NEXT_DATA__ — Listings nicht gefunden. Top-Keys pageProps: {top_keys}")
+        log.warning(f"ZAP __NEXT_DATA__ — Listings-Key nicht gefunden. pageProps-Keys: {top_keys}")
         if page_props:
             for k, v in page_props.items():
                 sub = list(v.keys()) if isinstance(v, dict) else type(v).__name__
                 log.warning(f"  pageProps.{k}: {sub}")
         return []
 
-    log.info(f"ZAP __NEXT_DATA__ — {len(listings_raw)} Roheinträge gefunden")
+    log.info(f"ZAP __NEXT_DATA__ — {len(listings_raw)} Roheinträge")
 
     listings = []
     for eintrag in listings_raw:
@@ -134,8 +117,8 @@ def parse_listings_aus_html(html: str) -> list[dict]:
             # ZAP verschachtelt Inserat-Daten in .listing, manchmal direkt im Objekt
             l = eintrag.get("listing") or eintrag
 
-            ext_id  = str(l.get("id", ""))
-            preise  = l.get("pricingInfos") or []
+            ext_id = str(l.get("id", ""))
+            preise = l.get("pricingInfos") or []
             preis_brl = None
             iptu_brl  = None
             condo_brl = None
@@ -156,12 +139,10 @@ def parse_listings_aus_html(html: str) -> list[dict]:
             flaeche = int(flaeche_raw[0]) if isinstance(flaeche_raw, list) and flaeche_raw else (int(flaeche_raw) if flaeche_raw else None)
 
             addr = l.get("address") or {}
-            lat_raw = addr.get("point", {}).get("lat") if isinstance(addr.get("point"), dict) else None
-            lng_raw = addr.get("point", {}).get("lon") if isinstance(addr.get("point"), dict) else None
-            lat = float(lat_raw) if lat_raw else None
-            lng = float(lng_raw) if lng_raw else None
+            point = addr.get("point") or {}
+            lat = float(point["lat"]) if "lat" in point else None
+            lng = float(point["lon"]) if "lon" in point else None
 
-            # URL aus link-Eintrag
             link_obj = eintrag.get("link") or {}
             url = link_obj.get("href", "") if isinstance(link_obj, dict) else ""
             if not url:
@@ -235,16 +216,25 @@ def scrape_alle_staedte(max_seiten: int = 3) -> list[dict]:
                 try:
                     page.goto(url, timeout=30000)
                     page.wait_for_timeout(4000 + seite * 500)
-                    html = page.content()
+                    # window.__NEXT_DATA__ bleibt als globale JS-Variable erhalten,
+                    # auch nachdem React den DOM-Script-Tag nach Hydration entfernt hat
+                    next_data = page.evaluate(
+                        "() => { try { return window.__NEXT_DATA__ || null; } catch(e) { return null; } }"
+                    )
                 except Exception as e:
                     log.warning(f"Fehler bei {stadt_key} Seite {seite}: {e}")
                     break
 
-                listings = parse_listings_aus_html(html)
-                if not listings:
+                if not next_data:
                     if seite == 1:
-                        snippet = html[:500].replace("\n", " ").strip()
-                        log.warning(f"  ZAP 0 Inserate Seite 1 für {stadt_key} | HTML: {snippet}")
+                        log.warning(
+                            f"  ZAP window.__NEXT_DATA__ null für {stadt_key} — "
+                            f"Seite geladen aber kein JS-Kontext"
+                        )
+                    break
+
+                listings = parse_listings_aus_next_data(next_data)
+                if not listings:
                     break
 
                 log.info(f"  Seite {seite}: {len(listings)} Inserate")
