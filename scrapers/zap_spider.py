@@ -202,11 +202,39 @@ def _parse_kandidaten(body: str, ct: str) -> list[dict]:
 
 
 def _extrahiere_listings_aus_kandidat(data) -> list[dict]:
-    """Extrahiert Roheinträge aus einem einzelnen JSON-Objekt (alle bekannten Strukturen)."""
+    """
+    Extrahiert Roheinträge aus einem JSON-Objekt oder -Array.
+    Priorität: Suchergebnisse > Tiefensuche > Empfehlungen (letzter Fallback).
+    """
+    if isinstance(data, list):
+        # RSC-Array-Chunk: Tiefensuche nach "listings"
+        gefunden = _tiefe_suche(data, "listings")
+        if gefunden and isinstance(gefunden, list):
+            return gefunden
+        return []
+
     if not isinstance(data, dict):
         return []
 
-    # 1) glue-api /v2/recommendations → recommendations[].scores[].listing
+    # 1) Bekannte Search-Ergebnis-Pfade (höchste Priorität)
+    for pfad in [
+        lambda d: d.get("search", {}).get("result", {}).get("listings"),
+        lambda d: d.get("result", {}).get("listings"),
+        lambda d: d.get("listings"),
+    ]:
+        try:
+            c = pfad(data)
+            if c and isinstance(c, list) and len(c) > 0:
+                return c
+        except Exception:
+            continue
+
+    # 2) Rekursive Tiefensuche nach "listings"
+    gefunden = _tiefe_suche(data, "listings")
+    if gefunden and isinstance(gefunden, list) and len(gefunden) > 0:
+        return gefunden
+
+    # 3) Fallback: glue-api /v2/recommendations (personalisiert, nicht stadtbezogen)
     recos = data.get("recommendations")
     if recos and isinstance(recos, list):
         eintraege = []
@@ -217,24 +245,6 @@ def _extrahiere_listings_aus_kandidat(data) -> list[dict]:
                     eintraege.append(entry)
         if eintraege:
             return eintraege
-
-    # 2) Bekannte Search-Ergebnis-Pfade
-    for pfad in [
-        lambda d: d.get("search", {}).get("result", {}).get("listings"),
-        lambda d: d.get("result", {}).get("listings"),
-        lambda d: d.get("listings"),
-    ]:
-        try:
-            c = pfad(data)
-            if c and isinstance(c, list):
-                return c
-        except Exception:
-            continue
-
-    # 3) Rekursive Tiefensuche
-    gefunden = _tiefe_suche(data, "listings")
-    if gefunden and isinstance(gefunden, list):
-        return gefunden
 
     return []
 
