@@ -164,6 +164,9 @@ def scrape_alle_staedte(max_seiten: int = 3) -> list[dict]:
 
                 listings = parse_listings_aus_html(html)
                 if not listings:
+                    if seite == 1:
+                        snippet = html[:500].replace("\n", " ").strip()
+                        log.warning(f"  ZAP 0 Inserate Seite 1 für {stadt_key} | HTML: {snippet}")
                     break
 
                 log.info(f"  Seite {seite}: {len(listings)} Inserate")
