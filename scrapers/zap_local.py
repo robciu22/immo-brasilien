@@ -171,16 +171,17 @@ def _scrape_seite(
     Gibt Roheinträge (listing-Objekte) zurück.
     """
     offset = (seite - 1) * 24
-    params = {
-        "unitTypes":    "APARTMENT,HOME",
-        "businessType": "SALE",
-        "stateSlug":    bundesstaat,
-        "citySlug":     slug,
-        "categoryPage": "1",
-        "size":         "24",
-        "from":         str(offset),
-        "portal":       "ZAP",
-    }
+    # unitTypes als Liste → erzeugt ?unitTypes=APARTMENT&unitTypes=HOME
+    params = [
+        ("unitTypes",    "APARTMENT"),
+        ("unitTypes",    "HOME"),
+        ("businessType", "SALE"),
+        ("stateSlug",    bundesstaat),
+        ("citySlug",     slug),
+        ("size",         "24"),
+        ("from",         str(offset)),
+        ("portal",       "ZAP"),
+    ]
     headers = {
         "Accept":   "application/json",
         "X-Domain": "www.zapimoveis.com.br",
