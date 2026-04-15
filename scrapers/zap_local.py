@@ -173,7 +173,6 @@ def _scrape_seite(
     offset = (seite - 1) * 24
     params = {
         "unitTypes":    "APARTMENT,HOME",
-        "listingType":  "USED",
         "businessType": "SALE",
         "stateSlug":    bundesstaat,
         "citySlug":     slug,
@@ -181,7 +180,6 @@ def _scrape_seite(
         "size":         "24",
         "from":         str(offset),
         "portal":       "ZAP",
-        "priceMax":     str(PREIS_MAX_BRL),
     }
     headers = {
         "Accept":   "application/json",
@@ -204,7 +202,7 @@ def _scrape_seite(
             )
             return []
         if resp.status_code != 200:
-            log.warning(f"  {bundesstaat}/{slug} S{seite}: HTTP {resp.status_code}")
+            log.warning(f"  {bundesstaat}/{slug} S{seite}: HTTP {resp.status_code} | {resp.text[:300]!r}")
             return []
 
         data = resp.json()
