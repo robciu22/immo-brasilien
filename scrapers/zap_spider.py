@@ -169,44 +169,101 @@ def parse_listings_aus_next_data(data: dict) -> list[dict]:
     return listings
 
 
+def _parse_kandidaten(body: str, ct: str) -> list[dict]:
+    """
+    Gibt eine Liste von JSON-Objekten zurück die aus dem Response-Body extrahiert wurden.
+    Unterstützt normales JSON und Next.js RSC-Streams (text/x-component).
+    """
+    import json, re
+    kandidaten = []
+
+    # Normales JSON-Objekt
+    try:
+        obj = json.loads(body)
+        if isinstance(obj, dict):
+            kandidaten.append(obj)
+            return kandidaten
+    except Exception:
+        pass
+
+    # RSC-Stream: Zeilen im Format  "<hex_id>:<json_fragment>"
+    # Wir extrahieren alle Zeilen die mit einem JSON-Objekt oder -Array beginnen
+    for line in body.splitlines():
+        m = re.match(r'^[0-9a-f]+:([\[{].+)', line)
+        if m:
+            try:
+                obj = json.loads(m.group(1))
+                if isinstance(obj, (dict, list)):
+                    kandidaten.append(obj)
+            except Exception:
+                pass
+
+    return kandidaten
+
+
+def _extrahiere_listings_aus_kandidat(data) -> list[dict]:
+    """Extrahiert Roheinträge aus einem einzelnen JSON-Objekt (alle bekannten Strukturen)."""
+    if not isinstance(data, dict):
+        return []
+
+    # 1) glue-api /v2/recommendations → recommendations[].scores[].listing
+    recos = data.get("recommendations")
+    if recos and isinstance(recos, list):
+        eintraege = []
+        for reco in recos:
+            for score in (reco.get("scores") or []):
+                entry = score.get("listing")
+                if entry and isinstance(entry, dict):
+                    eintraege.append(entry)
+        if eintraege:
+            return eintraege
+
+    # 2) Bekannte Search-Ergebnis-Pfade
+    for pfad in [
+        lambda d: d.get("search", {}).get("result", {}).get("listings"),
+        lambda d: d.get("result", {}).get("listings"),
+        lambda d: d.get("listings"),
+    ]:
+        try:
+            c = pfad(data)
+            if c and isinstance(c, list):
+                return c
+        except Exception:
+            continue
+
+    # 3) Rekursive Tiefensuche
+    gefunden = _tiefe_suche(data, "listings")
+    if gefunden and isinstance(gefunden, list):
+        return gefunden
+
+    return []
+
+
 def _extrahiere_listings_aus_api_responses(api_responses: list[dict]) -> list[dict]:
     """
-    Durchsucht abgefangene JSON-API-Antworten nach Inseraten.
-    Probiert mehrere bekannte OLX/ZAP-API-Strukturen.
+    Durchsucht abgefangene API-Antworten (JSON + RSC) nach Inseraten.
+    Unterstützt glue-api recommendations, Search-Ergebnisse und RSC-Streams.
     """
-    import json
-
     alle = []
     gesehen_ids: set[str] = set()
 
     for resp in api_responses:
         body = resp.get("body", "")
+        ct   = resp.get("ct", "")
         if not body:
             continue
-        try:
-            data = json.loads(body)
-        except Exception:
-            continue
 
-        # Bekannte Pfade in der OLX/ZAP glue-api
-        listings_raw = None
-        for pfad in [
-            lambda d: d.get("search", {}).get("result", {}).get("listings"),
-            lambda d: d.get("result", {}).get("listings"),
-            lambda d: d.get("listings"),
-        ]:
-            try:
-                c = pfad(data)
-                if c and isinstance(c, list) and len(c) > 0:
-                    listings_raw = c
-                    break
-            except Exception:
-                continue
+        kandidaten = _parse_kandidaten(body, ct)
 
-        if listings_raw is None:
-            listings_raw = _tiefe_suche(data, "listings")
+        listings_raw = []
+        for kandidat in kandidaten:
+            gefunden = _extrahiere_listings_aus_kandidat(kandidat)
+            if gefunden:
+                listings_raw = gefunden
+                log.debug(f"  Kandidat in {resp['url'][:80]} → {len(listings_raw)} Roheinträge")
+                break
 
-        if not listings_raw or not isinstance(listings_raw, list):
+        if not listings_raw:
             continue
 
         log.debug(f"  API-Response {resp['url'][:80]} → {len(listings_raw)} Roheinträge")
@@ -328,14 +385,20 @@ def scrape_alle_staedte(max_seiten: int = 3) -> list[dict]:
                 def _on_response(response, _store=api_responses):
                     if response.status != 200:
                         return
-                    ct = response.headers.get("content-type", "")
-                    if "json" not in ct:
-                        return
                     r_url = response.url
-                    if "zapimoveis" not in r_url and "olx" not in r_url and "glue-api" not in r_url:
+                    is_glue = "glue-api" in r_url
+                    is_zap  = "zapimoveis" in r_url or "olx" in r_url
+                    if not (is_glue or is_zap):
+                        return
+                    ct = response.headers.get("content-type", "")
+                    # glue-api: immer erfassen (kann auch text/plain o.ä. sein)
+                    # zapimoveis.com.br: JSON + RSC-Stream (text/x-component)
+                    if not is_glue and "json" not in ct and "x-component" not in ct:
                         return
                     try:
-                        _store.append({"url": r_url, "body": response.body().decode("utf-8", errors="ignore")})
+                        body = response.body().decode("utf-8", errors="ignore")
+                        if body:
+                            _store.append({"url": r_url, "body": body, "ct": ct})
                     except Exception:
                         pass
 
@@ -356,9 +419,12 @@ def scrape_alle_staedte(max_seiten: int = 3) -> list[dict]:
                     if seite == 1:
                         if api_responses:
                             for r in api_responses[:5]:
-                                log.warning(f"  ZAP API ohne Listings: {r['url'][:100]} | {r['body'][:120]}")
+                                log.warning(
+                                    f"  ZAP API ohne Listings [{r.get('ct','?')[:30]}]: "
+                                    f"{r['url'][:100]} | {r['body'][:150]}"
+                                )
                         else:
-                            log.warning(f"  ZAP keine JSON-Antworten für {stadt_key}")
+                            log.warning(f"  ZAP keine Antworten für {stadt_key}")
                     break
 
                 log.info(f"  Seite {seite}: {len(listings)} Inserate")
