@@ -2,10 +2,9 @@
 ZAP Imóveis Spider — Immobiliensuche Brasilien
 Scrapet Kaufinserate in den 20 Zielstädten (Küstenorte) bis 2.200.000 BRL (~375.000 €).
 Nutzt Playwright (headless=False) um Bot-Erkennung zu umgehen.
-Daten werden aus eingebettetem Next.js JSON extrahiert (gleiches OLX-Backend wie VivaReal).
+Daten werden aus dem eingebetteten Next.js __NEXT_DATA__ JSON extrahiert.
 """
 
-import re
 import time
 import hashlib
 import logging
@@ -61,53 +60,132 @@ def erstelle_hash(inserat_id: str) -> str:
     return hashlib.md5(f"zap-{inserat_id}".encode()).hexdigest()
 
 
-def parse_listings_aus_html(html: str) -> list[dict]:
-    """Extrahiert Inserate aus dem eingebetteten Next.js JSON (gleiches Format wie VivaReal)."""
-    soup = BeautifulSoup(html, "html.parser")
+def _tiefe_suche(obj, key: str):
+    """Durchsucht rekursiv ein JSON-Objekt nach einem Schlüssel, gibt erste Fundstelle zurück."""
+    if isinstance(obj, dict):
+        if key in obj:
+            return obj[key]
+        for v in obj.values():
+            result = _tiefe_suche(v, key)
+            if result is not None:
+                return result
+    elif isinstance(obj, list):
+        for item in obj:
+            result = _tiefe_suche(item, key)
+            if result is not None:
+                return result
+    return None
 
-    for s in soup.find_all("script"):
-        text = s.string or ""
-        if "mainValue" not in text:
+
+def parse_listings_aus_html(html: str) -> list[dict]:
+    """Extrahiert Inserate aus dem eingebetteten Next.js __NEXT_DATA__ JSON."""
+    import json
+
+    soup = BeautifulSoup(html, "html.parser")
+    tag = soup.find("script", {"id": "__NEXT_DATA__"})
+    if not tag or not tag.string:
+        return []
+
+    try:
+        data = json.loads(tag.string)
+    except json.JSONDecodeError as e:
+        log.warning(f"ZAP __NEXT_DATA__ JSON-Fehler: {e}")
+        return []
+
+    # Bekannte Pfade für ZAP-Listings (OLX Brasil Backend)
+    listings_raw = None
+    page_props = data.get("props", {}).get("pageProps", {})
+
+    for pfad in [
+        # Standardpfade ZAP
+        lambda pp: pp.get("initialState", {}).get("search", {}).get("result", {}).get("listings"),
+        lambda pp: pp.get("initialData", {}).get("search", {}).get("result", {}).get("listings"),
+        lambda pp: pp.get("serverData", {}).get("search", {}).get("result", {}).get("listings"),
+        lambda pp: pp.get("initialState", {}).get("results", {}).get("listings"),
+        lambda pp: pp.get("listings"),
+    ]:
+        try:
+            candidate = pfad(page_props)
+            if candidate:
+                listings_raw = candidate
+                break
+        except Exception:
             continue
 
-        unescaped = text.replace('\\"', '"')
+    # Fallback: rekursive Suche nach "listings"-Schlüssel
+    if listings_raw is None:
+        listings_raw = _tiefe_suche(data, "listings")
 
-        ids     = re.findall(r'"id":"(\d{8,12})"', unescaped)
-        preise  = re.findall(r'"mainValue":(\d+)', unescaped)
-        zimmer  = re.findall(r'"bedrooms":\[(\d+)\]', unescaped)
-        urls    = re.findall(r'"href":"(https://www\.zapimoveis[^"]+/imovel/[^"]+)"', unescaped)
-        iptu    = re.findall(r'"iptu":(\d+)', unescaped)
-        condo   = re.findall(r'"condominium":(\d+)', unescaped)
-        lats    = re.findall(r'"lat":([-\d.]+)', unescaped)
-        lngs    = re.findall(r'"lon":([-\d.]+)', unescaped)
+    if listings_raw is None:
+        # Struktur loggen damit wir den richtigen Pfad finden
+        top_keys = list(page_props.keys()) if page_props else list(data.keys())
+        log.warning(f"ZAP __NEXT_DATA__ — Listings nicht gefunden. Top-Keys pageProps: {top_keys}")
+        if page_props:
+            for k, v in page_props.items():
+                sub = list(v.keys()) if isinstance(v, dict) else type(v).__name__
+                log.warning(f"  pageProps.{k}: {sub}")
+        return []
 
-        listings = []
-        for i in range(len(preise)):
-            preis_brl = int(preise[i])
-            if preis_brl > PREIS_MAX_BRL:
+    log.info(f"ZAP __NEXT_DATA__ — {len(listings_raw)} Roheinträge gefunden")
+
+    listings = []
+    for eintrag in listings_raw:
+        try:
+            # ZAP verschachtelt Inserat-Daten in .listing, manchmal direkt im Objekt
+            l = eintrag.get("listing") or eintrag
+
+            ext_id  = str(l.get("id", ""))
+            preise  = l.get("pricingInfos") or []
+            preis_brl = None
+            iptu_brl  = None
+            condo_brl = None
+            for p in preise if isinstance(preise, list) else [preise]:
+                if p.get("businessType") == "SALE":
+                    preis_brl = int(p.get("price", 0)) or None
+                    iptu_brl  = int(p.get("yearlyIptu", 0)) or None
+                    condo_brl = int(p.get("monthlyCondoFee", 0)) or None
+                    break
+
+            if preis_brl is None or preis_brl > PREIS_MAX_BRL:
                 continue
 
-            url = urls[i] if i < len(urls) else ""
-            flaeche = extrahiere_flaeche_aus_url(url)
+            zimmer_raw = l.get("bedrooms")
+            zimmer = int(zimmer_raw[0]) if isinstance(zimmer_raw, list) and zimmer_raw else (int(zimmer_raw) if zimmer_raw else None)
 
-            lat = float(lats[i]) if i < len(lats) else None
-            lng = float(lngs[i]) if i < len(lngs) else None
+            flaeche_raw = l.get("usableAreas") or l.get("totalAreas")
+            flaeche = int(flaeche_raw[0]) if isinstance(flaeche_raw, list) and flaeche_raw else (int(flaeche_raw) if flaeche_raw else None)
+
+            addr = l.get("address") or {}
+            lat_raw = addr.get("point", {}).get("lat") if isinstance(addr.get("point"), dict) else None
+            lng_raw = addr.get("point", {}).get("lon") if isinstance(addr.get("point"), dict) else None
+            lat = float(lat_raw) if lat_raw else None
+            lng = float(lng_raw) if lng_raw else None
+
+            # URL aus link-Eintrag
+            link_obj = eintrag.get("link") or {}
+            url = link_obj.get("href", "") if isinstance(link_obj, dict) else ""
+            if not url:
+                url = l.get("href", "")
+
+            if not flaeche and url:
+                flaeche = extrahiere_flaeche_aus_url(url)
 
             listings.append({
-                "externe_id":  ids[i] if i < len(ids) else None,
+                "externe_id":  ext_id or None,
                 "preis_brl":   preis_brl,
-                "zimmer":      int(zimmer[i]) if i < len(zimmer) else None,
+                "zimmer":      zimmer,
                 "flaeche_m2":  flaeche,
                 "url":         url,
                 "lat":         lat,
                 "lng":         lng,
-                "iptu_brl":    int(iptu[i]) if i < len(iptu) else None,
-                "condo_brl":   int(condo[i]) if i < len(condo) else None,
+                "iptu_brl":    iptu_brl,
+                "condo_brl":   condo_brl,
             })
+        except Exception as e:
+            log.debug(f"ZAP Eintrag übersprungen: {e}")
+            continue
 
-        return listings
-
-    return []
+    return listings
 
 
 def scrape_alle_staedte(max_seiten: int = 3) -> list[dict]:
