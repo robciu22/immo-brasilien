@@ -169,6 +169,115 @@ def parse_listings_aus_next_data(data: dict) -> list[dict]:
     return listings
 
 
+def _extrahiere_listings_aus_api_responses(api_responses: list[dict]) -> list[dict]:
+    """
+    Durchsucht abgefangene JSON-API-Antworten nach Inseraten.
+    Probiert mehrere bekannte OLX/ZAP-API-Strukturen.
+    """
+    import json
+
+    alle = []
+    gesehen_ids: set[str] = set()
+
+    for resp in api_responses:
+        body = resp.get("body", "")
+        if not body:
+            continue
+        try:
+            data = json.loads(body)
+        except Exception:
+            continue
+
+        # Bekannte Pfade in der OLX/ZAP glue-api
+        listings_raw = None
+        for pfad in [
+            lambda d: d.get("search", {}).get("result", {}).get("listings"),
+            lambda d: d.get("result", {}).get("listings"),
+            lambda d: d.get("listings"),
+        ]:
+            try:
+                c = pfad(data)
+                if c and isinstance(c, list) and len(c) > 0:
+                    listings_raw = c
+                    break
+            except Exception:
+                continue
+
+        if listings_raw is None:
+            listings_raw = _tiefe_suche(data, "listings")
+
+        if not listings_raw or not isinstance(listings_raw, list):
+            continue
+
+        log.debug(f"  API-Response {resp['url'][:80]} → {len(listings_raw)} Roheinträge")
+
+        for eintrag in listings_raw:
+            try:
+                l = eintrag.get("listing") or eintrag
+
+                ext_id = str(l.get("id", ""))
+                if ext_id and ext_id in gesehen_ids:
+                    continue
+                if ext_id:
+                    gesehen_ids.add(ext_id)
+
+                preise = l.get("pricingInfos") or []
+                preis_brl = None
+                iptu_brl  = None
+                condo_brl = None
+                for p in (preise if isinstance(preise, list) else [preise]):
+                    if p.get("businessType") == "SALE":
+                        preis_brl = int(p.get("price", 0)) or None
+                        iptu_brl  = int(p.get("yearlyIptu", 0)) or None
+                        condo_brl = int(p.get("monthlyCondoFee", 0)) or None
+                        break
+
+                if preis_brl is None or preis_brl > PREIS_MAX_BRL:
+                    continue
+
+                zimmer_raw = l.get("bedrooms")
+                zimmer = (
+                    int(zimmer_raw[0]) if isinstance(zimmer_raw, list) and zimmer_raw
+                    else (int(zimmer_raw) if zimmer_raw else None)
+                )
+
+                flaeche_raw = l.get("usableAreas") or l.get("totalAreas")
+                flaeche = (
+                    int(flaeche_raw[0]) if isinstance(flaeche_raw, list) and flaeche_raw
+                    else (int(flaeche_raw) if flaeche_raw else None)
+                )
+
+                addr  = l.get("address") or {}
+                point = addr.get("point") or {}
+                lat = float(point["lat"]) if "lat" in point else None
+                lng = float(point["lon"]) if "lon" in point else None
+
+                link_obj = eintrag.get("link") or {}
+                url = link_obj.get("href", "") if isinstance(link_obj, dict) else ""
+                if not url:
+                    url = l.get("href", "")
+
+                if not flaeche and url:
+                    flaeche = extrahiere_flaeche_aus_url(url)
+
+                alle.append({
+                    "externe_id": ext_id or None,
+                    "preis_brl":  preis_brl,
+                    "zimmer":     zimmer,
+                    "flaeche_m2": flaeche,
+                    "url":        url,
+                    "lat":        lat,
+                    "lng":        lng,
+                    "iptu_brl":   iptu_brl,
+                    "condo_brl":  condo_brl,
+                })
+            except Exception as e:
+                log.debug(f"ZAP API-Eintrag übersprungen: {e}")
+                continue
+
+    return alle
+
+
 def scrape_alle_staedte(max_seiten: int = 3) -> list[dict]:
     """
     Scrapet alle 20 Zielstädte auf ZAP Imóveis, bis zu max_seiten pro Stadt.
@@ -213,28 +322,43 @@ def scrape_alle_staedte(max_seiten: int = 3) -> list[dict]:
                     f"&pagina={seite}"
                 )
 
+                # Fange JSON-API-Antworten während des Seitenladens ab
+                api_responses: list[dict] = []
+
+                def _on_response(response, _store=api_responses):
+                    if response.status != 200:
+                        return
+                    ct = response.headers.get("content-type", "")
+                    if "json" not in ct:
+                        return
+                    r_url = response.url
+                    if "zapimoveis" not in r_url and "olx" not in r_url and "glue-api" not in r_url:
+                        return
+                    try:
+                        _store.append({"url": r_url, "body": response.body().decode("utf-8", errors="ignore")})
+                    except Exception:
+                        pass
+
+                page.on("response", _on_response)
                 try:
                     page.goto(url, timeout=30000)
                     page.wait_for_timeout(4000 + seite * 500)
-                    # window.__NEXT_DATA__ bleibt als globale JS-Variable erhalten,
-                    # auch nachdem React den DOM-Script-Tag nach Hydration entfernt hat
-                    next_data = page.evaluate(
-                        "() => { try { return window.__NEXT_DATA__ || null; } catch(e) { return null; } }"
-                    )
                 except Exception as e:
                     log.warning(f"Fehler bei {stadt_key} Seite {seite}: {e}")
+                    page.remove_listener("response", _on_response)
                     break
+                finally:
+                    page.remove_listener("response", _on_response)
 
-                if not next_data:
-                    if seite == 1:
-                        log.warning(
-                            f"  ZAP window.__NEXT_DATA__ null für {stadt_key} — "
-                            f"Seite geladen aber kein JS-Kontext"
-                        )
-                    break
+                listings = _extrahiere_listings_aus_api_responses(api_responses)
 
-                listings = parse_listings_aus_next_data(next_data)
                 if not listings:
+                    if seite == 1:
+                        if api_responses:
+                            for r in api_responses[:5]:
+                                log.warning(f"  ZAP API ohne Listings: {r['url'][:100]} | {r['body'][:120]}")
+                        else:
+                            log.warning(f"  ZAP keine JSON-Antworten für {stadt_key}")
                     break
 
                 log.info(f"  Seite {seite}: {len(listings)} Inserate")
