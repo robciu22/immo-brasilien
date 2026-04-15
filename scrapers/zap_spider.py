@@ -169,6 +169,57 @@ def parse_listings_aus_next_data(data: dict) -> list[dict]:
     return listings
 
 
+def parse_listings_aus_html(html: str) -> list[dict]:
+    """Extrahiert Inserate aus dem gerenderten ZAP-HTML (analog zu VivaReal-Spider)."""
+    import re
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(html, "html.parser")
+
+    for s in soup.find_all("script"):
+        text = s.string or ""
+        if "mainValue" not in text:
+            continue
+
+        unescaped = text.replace('\\"', '"')
+
+        ids    = re.findall(r'"id":"(\d{8,12})"', unescaped)
+        preise = re.findall(r'"mainValue":(\d+)', unescaped)
+        zimmer = re.findall(r'"bedrooms":\[(\d+)\]', unescaped)
+        urls   = re.findall(r'"href":"(https://www\.zapimoveis[^"]+/imovel/[^"]+)"', unescaped)
+        iptu   = re.findall(r'"iptu":(\d+)', unescaped)
+        condo  = re.findall(r'"condominium":(\d+)', unescaped)
+        lats   = re.findall(r'"lat":([-\d.]+)', unescaped)
+        lngs   = re.findall(r'"lon":([-\d.]+)', unescaped)
+
+        listings = []
+        for i in range(len(preise)):
+            preis_brl = int(preise[i])
+            if preis_brl > PREIS_MAX_BRL:
+                continue
+
+            url = urls[i] if i < len(urls) else ""
+            flaeche = extrahiere_flaeche_aus_url(url)
+            lat = float(lats[i]) if i < len(lats) else None
+            lng = float(lngs[i]) if i < len(lngs) else None
+
+            listings.append({
+                "externe_id": ids[i] if i < len(ids) else None,
+                "preis_brl":  preis_brl,
+                "zimmer":     int(zimmer[i]) if i < len(zimmer) else None,
+                "flaeche_m2": flaeche,
+                "url":        url,
+                "lat":        lat,
+                "lng":        lng,
+                "iptu_brl":   int(iptu[i]) if i < len(iptu) else None,
+                "condo_brl":  int(condo[i]) if i < len(condo) else None,
+            })
+
+        return listings
+
+    return []
+
+
 def _parse_kandidaten(body: str, ct: str) -> list[dict]:
     """
     Gibt eine Liste von JSON-Objekten zurück die aus dem Response-Body extrahiert wurden.
@@ -416,6 +467,7 @@ def scrape_alle_staedte(max_seiten: int = 3) -> list[dict]:
                 try:
                     page.goto(url, timeout=30000)
                     page.wait_for_timeout(4000 + seite * 500)
+                    html = page.content()
                 except Exception as e:
                     log.warning(f"Fehler bei {stadt_key} Seite {seite}: {e}")
                     page.remove_listener("response", _on_response)
@@ -423,18 +475,19 @@ def scrape_alle_staedte(max_seiten: int = 3) -> list[dict]:
                 finally:
                     page.remove_listener("response", _on_response)
 
-                listings = _extrahiere_listings_aus_api_responses(api_responses)
+                # 1) HTML-Parsing (wie VivaReal-Spider — zuverlässiger als API-Interception)
+                listings = parse_listings_aus_html(html)
+
+                # 2) Fallback: abgefangene API-Responses
+                if not listings:
+                    listings = _extrahiere_listings_aus_api_responses(api_responses)
 
                 if not listings:
                     if seite == 1:
-                        if api_responses:
-                            for r in api_responses[:5]:
-                                log.warning(
-                                    f"  ZAP API ohne Listings [{r.get('ct','?')[:30]}]: "
-                                    f"{r['url'][:100]} | {r['body'][:150]}"
-                                )
-                        else:
-                            log.warning(f"  ZAP keine Antworten für {stadt_key}")
+                        log.warning(
+                            f"  ZAP keine Inserate für {stadt_key} | "
+                            f"HTML-Snippet: {html[:300]!r}"
+                        )
                     break
 
                 log.info(f"  Seite {seite}: {len(listings)} Inserate")
