@@ -430,14 +430,16 @@ def _scrape_stadt_via_api(
     try:
         resp = session.get(api_url, params=params, headers=headers, timeout=15)
         if resp.status_code != 200:
-            log.debug(f"  ZAP direkte API {bundesstaat}/{slug} S{seite}: HTTP {resp.status_code}")
+            log.warning(f"  ZAP direkte API {bundesstaat}/{slug} S{seite}: HTTP {resp.status_code} | {resp.text[:200]!r}")
             return []
         body = resp.text
         if not body or "listings" not in body:
+            top_keys = list(resp.json().keys()) if body else []
+            log.warning(f"  ZAP direkte API {bundesstaat}/{slug} S{seite}: kein 'listings'-Key | Keys: {top_keys} | Snippet: {body[:300]!r}")
             return []
         return [{"url": api_url, "body": body, "ct": "application/json"}]
     except Exception as e:
-        log.debug(f"  ZAP direkte API Fehler {bundesstaat}/{slug} S{seite}: {e}")
+        log.warning(f"  ZAP direkte API Fehler {bundesstaat}/{slug} S{seite}: {e}")
         return []
 
 
