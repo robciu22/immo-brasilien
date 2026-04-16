@@ -125,30 +125,31 @@ log = logging.getLogger(__name__)
 
 PREIS_MAX_BRL = 2_200_000
 
+# (region, addressState, addressCity, addressLocationId, lat, lon)
 ZIELSTAEDTE = {
     # Nordosten
-    "fortaleza":          ("nordosten",  "ceara",                "fortaleza"),
-    "jericoacoara":       ("nordosten",  "ceara",                "jijoca-de-jericoacoara"),
-    "natal":              ("nordosten",  "rio-grande-do-norte",  "natal"),
-    "pipa":               ("nordosten",  "rio-grande-do-norte",  "tibau-do-sul"),
-    "recife":             ("nordosten",  "pernambuco",           "recife"),
-    "salvador":           ("nordosten",  "bahia",                "salvador"),
-    "maceio":             ("nordosten",  "alagoas",              "maceio"),
-    "maragogi":           ("nordosten",  "alagoas",              "maragogi"),
-    "porto-seguro":       ("nordosten",  "bahia",                "porto-seguro"),
-    "itacare":            ("nordosten",  "bahia",                "itacare"),
+    "fortaleza":          ("nordosten",  "Ceará",                 "Fortaleza",              "BR>Ceara>NULL>Fortaleza",                    -3.73272,  -38.527013),
+    "jericoacoara":       ("nordosten",  "Ceará",                 "Jijoca de Jericoacoara", "BR>Ceara>NULL>Jijoca de Jericoacoara",       -2.795,    -40.513),
+    "natal":              ("nordosten",  "Rio Grande do Norte",   "Natal",                  "BR>Rio Grande do Norte>NULL>Natal",          -5.793,    -35.213),
+    "pipa":               ("nordosten",  "Rio Grande do Norte",   "Tibau do Sul",           "BR>Rio Grande do Norte>NULL>Tibau do Sul",   -6.183,    -35.088),
+    "recife":             ("nordosten",  "Pernambuco",            "Recife",                 "BR>Pernambuco>NULL>Recife",                  -8.054,    -34.881),
+    "salvador":           ("nordosten",  "Bahia",                 "Salvador",               "BR>Bahia>NULL>Salvador",                    -12.977,   -38.501),
+    "maceio":             ("nordosten",  "Alagoas",               "Maceió",                 "BR>Alagoas>NULL>Maceio",                    -9.666,    -35.735),
+    "maragogi":           ("nordosten",  "Alagoas",               "Maragogi",               "BR>Alagoas>NULL>Maragogi",                  -9.012,    -35.222),
+    "porto-seguro":       ("nordosten",  "Bahia",                 "Porto Seguro",           "BR>Bahia>NULL>Porto Seguro",                -16.450,   -39.066),
+    "itacare":            ("nordosten",  "Bahia",                 "Itacaré",                "BR>Bahia>NULL>Itacare",                     -14.278,   -38.999),
     # Süden
-    "florianopolis":      ("sueden",     "santa-catarina",       "florianopolis"),
-    "balneario-camboriu": ("sueden",     "santa-catarina",       "balneario-camboriu"),
-    "ubatuba":            ("sueden",     "sao-paulo",            "ubatuba"),
-    "guaruja":            ("sueden",     "sao-paulo",            "guaruja"),
-    "santos":             ("sueden",     "sao-paulo",            "santos"),
+    "florianopolis":      ("sueden",     "Santa Catarina",        "Florianópolis",          "BR>Santa Catarina>NULL>Florianopolis",      -27.595,   -48.548),
+    "balneario-camboriu": ("sueden",     "Santa Catarina",        "Balneário Camboriú",     "BR>Santa Catarina>NULL>Balneario Camboriu", -26.990,   -48.635),
+    "ubatuba":            ("sueden",     "São Paulo",             "Ubatuba",                "BR>Sao Paulo>NULL>Ubatuba",                 -23.433,   -45.083),
+    "guaruja":            ("sueden",     "São Paulo",             "Guarujá",                "BR>Sao Paulo>NULL>Guaruja",                 -23.993,   -46.257),
+    "santos":             ("sueden",     "São Paulo",             "Santos",                 "BR>Sao Paulo>NULL>Santos",                  -23.960,   -46.333),
     # Rio-Küste
-    "rio-de-janeiro":     ("rio-kueste", "rio-de-janeiro",       "rio-de-janeiro"),
-    "arraial-do-cabo":    ("rio-kueste", "rio-de-janeiro",       "arraial-do-cabo"),
-    "buzios":             ("rio-kueste", "rio-de-janeiro",       "armacao-dos-buzios"),
-    "angra-dos-reis":     ("rio-kueste", "rio-de-janeiro",       "angra-dos-reis"),
-    "paraty":             ("rio-kueste", "rio-de-janeiro",       "paraty"),
+    "rio-de-janeiro":     ("rio-kueste", "Rio de Janeiro",        "Rio de Janeiro",         "BR>Rio de Janeiro>NULL>Rio de Janeiro",     -22.908,   -43.196),
+    "arraial-do-cabo":    ("rio-kueste", "Rio de Janeiro",        "Arraial do Cabo",        "BR>Rio de Janeiro>NULL>Arraial do Cabo",    -22.966,   -42.028),
+    "buzios":             ("rio-kueste", "Rio de Janeiro",        "Armação dos Búzios",     "BR>Rio de Janeiro>NULL>Armacao dos Buzios", -22.748,   -41.883),
+    "angra-dos-reis":     ("rio-kueste", "Rio de Janeiro",        "Angra dos Reis",         "BR>Rio de Janeiro>NULL>Angra dos Reis",     -23.006,   -44.318),
+    "paraty":             ("rio-kueste", "Rio de Janeiro",        "Paraty",                 "BR>Rio de Janeiro>NULL>Paraty",             -23.220,   -44.713),
 }
 
 
@@ -161,39 +162,52 @@ def erstelle_hash(inserat_id: str) -> str:
 
 
 def _scrape_seite(
-    bundesstaat: str,
-    slug: str,
+    addr_state: str,
+    addr_city: str,
+    location_id: str,
+    lat: float,
+    lon: float,
     seite: int,
     session: requests.Session,
 ) -> list[dict]:
     """
     Ruft eine Seite Suchergebnisse von der glue-api ab.
-    Gibt Roheinträge (listing-Objekte) zurück.
+    Parameter-Format aus Browser-DevTools abgeleitet.
     """
     offset = (seite - 1) * 24
-    # unitTypes als Liste → erzeugt ?unitTypes=APARTMENT&unitTypes=HOME
     params = [
-        ("unitTypes",    "APARTMENT"),
-        ("unitTypes",    "HOME"),
-        ("businessType", "SALE"),
-        ("stateSlug",    bundesstaat),
-        ("citySlug",     slug),
-        ("size",         "24"),
-        ("from",         str(offset)),
-        ("portal",       "ZAP"),
+        ("business",           "SALE"),
+        ("parentId",           "null"),
+        ("listingType",        "USED"),
+        ("addressCity",        addr_city),
+        ("addressZone",        ""),
+        ("addressStreet",      ""),
+        ("addressLocationId",  location_id),
+        ("addressState",       addr_state),
+        ("addressNeighborhood",""),
+        ("addressPointLat",    str(lat)),
+        ("addressPointLon",    str(lon)),
+        ("addressType",        "city"),
+        ("unitTypes",          "APARTMENT,HOME"),
+        ("unitTypesV3",        "APARTMENT,CONDOMINIUM"),
+        ("unitSubTypes",       "UnitSubType_NONE,DUPLEX,TRIPLEX|CONDOMINIUM"),
+        ("usageTypes",         "RESIDENTIAL,RESIDENTIAL"),
+        ("page",               str(seite)),
+        ("size",               "24"),
+        ("from",               str(offset)),
+        ("images",             "webp"),
+        ("categoryPage",       "RESULT"),
     ]
     headers = {
-        "Accept":   "application/json",
-        "X-Domain": "www.zapimoveis.com.br",
+        "Accept":   "*/*",
+        "x-domain": ".zapimoveis.com.br",
         "Origin":   "https://www.zapimoveis.com.br",
-        "Referer":  f"https://www.zapimoveis.com.br/venda/{bundesstaat}/{slug}/",
+        "Referer":  "https://www.zapimoveis.com.br/",
     }
     try:
         resp = session.get(
             "https://glue-api.zapimoveis.com.br/v2/listings",
-            params=params,
-            headers=headers,
-            timeout=15,
+            params=params, headers=headers, timeout=15,
         )
         if resp.status_code == 403:
             log.error(
@@ -203,7 +217,7 @@ def _scrape_seite(
             )
             return []
         if resp.status_code != 200:
-            log.warning(f"  {bundesstaat}/{slug} S{seite}: HTTP {resp.status_code} | {resp.text[:300]!r}")
+            log.warning(f"  {addr_city} S{seite}: HTTP {resp.status_code} | {resp.text[:500]!r}")
             return []
 
         data = resp.json()
@@ -319,15 +333,24 @@ def scrape_alle_staedte(max_seiten: int = 3) -> list[dict]:
         "Accept-Language": "pt-BR,pt;q=0.9",
     })
 
+    # Erst Homepage besuchen — Cloudflare setzt dabei Cookies (cf_clearance etc.)
+    # die für nachfolgende API-Calls nötig sind
+    log.info("Lade Homepage zur Cookie-Initialisierung …")
+    try:
+        session.get("https://www.zapimoveis.com.br/", timeout=20)
+        log.info("Homepage geladen")
+    except Exception as e:
+        log.warning(f"Homepage-Preflight fehlgeschlagen: {e}")
+
     alle_inserate: list[dict] = []
     gesehen_ids:   set[str]   = set()
 
-    for stadt_key, (region, bundesstaat, slug) in ZIELSTAEDTE.items():
+    for stadt_key, (region, addr_state, addr_city, location_id, lat, lon) in ZIELSTAEDTE.items():
         log.info(f"ZAP lokal — Stadt: {stadt_key}")
         stadt_inserate = 0
 
         for seite in range(1, max_seiten + 1):
-            roheintraege = _scrape_seite(bundesstaat, slug, seite, session)
+            roheintraege = _scrape_seite(addr_state, addr_city, location_id, lat, lon, seite, session)
 
             if not roheintraege:
                 if seite == 1:
@@ -372,7 +395,7 @@ def main():
         # Nur fortaleza testen
         global ZIELSTAEDTE
         ZIELSTAEDTE = {
-            "fortaleza": ("nordosten", "ceara", "fortaleza"),
+            "fortaleza": ("nordosten", "Ceará", "Fortaleza", "BR>Ceara>NULL>Fortaleza", -3.73272, -38.527013),
         }
         inserate = scrape_alle_staedte(max_seiten=1)
     else:
