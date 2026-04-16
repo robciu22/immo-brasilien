@@ -275,6 +275,8 @@ def _parse_roheintrag(eintrag: dict, stadt_key: str, region: str, kurs: float) -
         url = link_obj.get("href", "") if isinstance(link_obj, dict) else ""
         if not url:
             url = l.get("href", "")
+        if url.startswith("/"):
+            url = "https://www.zapimoveis.com.br" + url
 
         if not flaeche and url:
             flaeche = extrahiere_flaeche_aus_url(url)
